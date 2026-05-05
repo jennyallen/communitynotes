@@ -112,7 +112,20 @@ def compute_general_helpfulness_scores(
   scoredNotes = scoredNotes[~pd.isna(scoredNotes[c.internalNoteInterceptKey])]
   authorCounts = author_helpfulness(scoredNotes, c.internalNoteInterceptKey)
   raterCounts = _rater_helpfulness(validRatings)
-
+  if len(raterCounts) == 0 or len(authorCounts) == 0:
+    return pd.DataFrame(columns=[
+      c.raterParticipantIdKey,
+      c.crhCrnhRatioDifferenceKey,
+      c.meanNoteScoreKey,
+      c.raterAgreeRatioKey,
+      c.successfulRatingNotHelpfulCount,
+      c.successfulRatingHelpfulCount,
+      c.unsuccessfulRatingNotHelpfulCount,
+      c.unsuccessfulRatingHelpfulCount,
+      c.totalHelpfulHarassmentRatingsPenaltyKey,
+      c.raterAgreeRatioWithHarassmentAbusePenaltyKey,
+      c.aboveHelpfulnessThresholdKey,
+    ])
   helpfulnessScores = (
     authorCounts.join(
       raterCounts,

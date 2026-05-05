@@ -8,3 +8,8 @@ __pycache__
 .vscode*
 communitynotes_env
 public_venv
+data
+data_small
+data_pre_june30
+*.out
+*.sh

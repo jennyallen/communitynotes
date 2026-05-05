@@ -92,8 +92,8 @@ def _get_scorers(
   scorers[Scorers.ReputationScorer] = [
     ReputationScorer(seed, useStableInitialization=useStableInitialization, threads=12)
   ]
-  # Note that index 0 is reserved, corresponding to no group assigned, so scoring group
-  # numbers begin with index 1.
+#  # Note that index 0 is reserved, corresponding to no group assigned, so scoring group
+#  # numbers begin with index 1.
   scorers[Scorers.MFGroupScorer] = [
     # Scoring Group 13 is currently the largest by far, so total runtime benefits from
     # adding the group scorers in descending order so we start work on Group 13 first.
@@ -115,7 +115,7 @@ def _get_scorers(
       diamondLambda=0.03 * 25,
       normalizedLossHyperparameters=NormalizedLossHyperparameters(
         globalSignNorm=True, noteSignAlpha=None, noteNormExp=0, raterNormExp=-0.25
-      ),
+     ),
       maxFinalMFTrainError=0.16,
       groupThreshold=0.4,
       minMeanNoteScore=-0.01,
@@ -692,6 +692,7 @@ def meta_score(
       auxiliaryNoteInfoCols pd.DataFrame: one row per note containing adjusted and ratio tag values
   """
   # Temporarily merge helpfulness tag aggregates into scoredNotes so we can run InsufficientExplanation
+  logger.info(f"DEBUG enabledScorers={enabledScorers}")  # <-- add this
   with c.time_block("Post-scorers: Meta Score: Setup"):
     assert len(scoredNotes) == len(auxiliaryNoteInfo)
     scoredNotes = scoredNotes.merge(
