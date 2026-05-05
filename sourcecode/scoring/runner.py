@@ -2,12 +2,20 @@ import argparse
 import logging
 import os
 import sys
+from functools import partial
 
 from . import constants as c
 from .enums import scorers_from_csv
 from .pandas_utils import patch_pandas
-from .process_data import LocalDataLoader, tsv_reader, write_parquet_local, write_tsv_local
-from .run_scoring import run_scoring
+from .process_data import (
+  LocalDataLoader,
+  filter_input_data_for_testing,
+  tsv_reader,
+  write_parquet_local,
+  write_prescoring_output,
+  write_tsv_local,
+)
+from .run_scoring import run_contributor_scoring, run_final_note_scoring, run_scoring
 
 import pandas as pd
 
@@ -174,6 +182,20 @@ def parse_args():
     dest="sample_ratings",
     help="Set to sample ratings at random.",
   )
+  parser.add_argument(
+    "--prescoring-outdir",
+    default=None,
+    dest="prescoring_outdir",
+    help="If set, write prescoring outputs (note/rater model output, classifiers, meta) "
+    "to this directory so a later final-only run can load them.",
+  )
+  parser.add_argument(
+    "--prescoring-indir",
+    default=None,
+    dest="prescoring_indir",
+    help="If set, skip prescoring and load prescoring artifacts from this directory "
+    "(written by a previous run with --prescoring-outdir).",
+  )
   return parser.parse_args()
 
 
@@ -227,29 +249,111 @@ def _run_scorer(
     ratings = ratings.sample(frac=args.sample_ratings)
     logger.info(f"ratings reduced from {origSize} to {len(ratings)}")
 
-  # Invoke scoring and user contribution algorithms.
-  scoredNotes, helpfulnessScores, newStatus, auxNoteInfo = run_scoring(
-    args,
-    notes,
-    ratings,
-    statusHistory,
-    userEnrollment,
-    seed=args.seed,
-    pseudoraters=args.pseudoraters,
-    enabledScorers=args.scorers,
-    strictColumns=args.strict_columns,
-    runParallel=args.parallel,
-    dataLoader=dataLoader if args.parallel == True else None,
-    cutoffTimestampMillis=args.cutoffTimestampMillis,
-    excludeRatingsAfterANoteGotFirstStatusPlusNHours=args.excludeRatingsAfterANoteGotFirstStatusPlusNHours,
-    daysInPastToApplyPostFirstStatusFiltering=args.daysInPastToApplyPostFirstStatusFiltering,
-    filterPrescoringInputToSimulateDelayInHours=args.prescoring_delay_hours,
-    checkFlips=args.check_flips,
-    previousScoredNotes=previousScoredNotes,
-    previousAuxiliaryNoteInfo=previousAuxiliaryNoteInfo,
-    previousRatingCutoffTimestampMillis=args.previous_rating_cutoff_millis,
-    **extraScoringArgs,
-  )
+  # If requested, persist prescoring outputs so future runs can skip prescoring.
+  writePrescoringScoringOutputCallback = None
+  if args.prescoring_outdir is not None:
+    os.makedirs(args.prescoring_outdir, exist_ok=True)
+    d = args.prescoring_outdir
+    writePrescoringScoringOutputCallback = partial(
+      write_prescoring_output,
+      noteModelOutputPath=os.path.join(d, "prescoring_note_model_output.tsv"),
+      raterModelOutputPath=os.path.join(d, "prescoring_rater_model_output.tsv"),
+      noteTopicClassifierPath=os.path.join(d, "prescoring_note_topic_classifier.joblib"),
+      pflipClassifierPath=os.path.join(d, "prescoring_pflip_classifier.bin"),
+      prescoringMetaOutputPath=os.path.join(d, "prescoring_meta_output.joblib"),
+      prescoringScoredNotesOutputPath=os.path.join(d, "prescoring_scored_notes.tsv"),
+      headers=args.headers,
+    )
+
+  if args.prescoring_indir is not None:
+    # Final-only path: load prescoring artifacts and skip the prescorer.
+    d = args.prescoring_indir
+    presLoader = LocalDataLoader(
+      args.notes,
+      args.ratings,
+      args.status,
+      args.enrollment,
+      args.headers,
+      prescoringNoteModelOutputPath=os.path.join(d, "prescoring_note_model_output.tsv"),
+      prescoringRaterModelOutputPath=os.path.join(d, "prescoring_rater_model_output.tsv"),
+      prescoringNoteTopicClassifierPath=os.path.join(d, "prescoring_note_topic_classifier.joblib"),
+      prescoringPflipClassifierPath=os.path.join(d, "prescoring_pflip_classifier.bin"),
+      prescoringMetaOutputPath=os.path.join(d, "prescoring_meta_output.joblib"),
+    )
+    (
+      preNoteOutput,
+      preRaterOutput,
+      topicClassifier,
+      pflipClassifier,
+      preMetaOutput,
+    ) = presLoader.get_prescoring_model_output()
+
+    notes, ratings, _, _ = filter_input_data_for_testing(
+      notes,
+      ratings,
+      statusHistory,
+      args.cutoffTimestampMillis,
+      args.excludeRatingsAfterANoteGotFirstStatusPlusNHours,
+      args.daysInPastToApplyPostFirstStatusFiltering,
+      args.prescoring_delay_hours,
+    )
+
+    scoredNotes, newStatus, auxNoteInfo, _ = run_final_note_scoring(
+      args,
+      notes=notes,
+      ratings=ratings,
+      noteStatusHistory=statusHistory,
+      userEnrollment=userEnrollment,
+      prescoringNoteModelOutput=preNoteOutput,
+      prescoringRaterModelOutput=preRaterOutput,
+      noteTopicClassifier=topicClassifier,
+      pflipClassifier=pflipClassifier,
+      prescoringMetaOutput=preMetaOutput,
+      seed=args.seed,
+      pseudoraters=args.pseudoraters,
+      enabledScorers=args.scorers,
+      strictColumns=args.strict_columns,
+      runParallel=args.parallel,
+      dataLoader=presLoader if args.parallel else None,
+      checkFlips=args.check_flips,
+      previousScoredNotes=previousScoredNotes,
+      previousAuxiliaryNoteInfo=previousAuxiliaryNoteInfo,
+      previousRatingCutoffTimestampMillis=args.previous_rating_cutoff_millis,
+    )
+    helpfulnessScores = run_contributor_scoring(
+      ratings=ratings,
+      scoredNotes=scoredNotes,
+      auxiliaryNoteInfo=auxNoteInfo,
+      prescoringRaterModelOutput=preRaterOutput,
+      noteStatusHistory=newStatus,
+      userEnrollment=userEnrollment,
+      strictColumns=args.strict_columns,
+    )
+  else:
+    # Combined path: prescoring + final scoring + contributor scoring.
+    scoredNotes, helpfulnessScores, newStatus, auxNoteInfo = run_scoring(
+      args,
+      notes,
+      ratings,
+      statusHistory,
+      userEnrollment,
+      seed=args.seed,
+      pseudoraters=args.pseudoraters,
+      enabledScorers=args.scorers,
+      strictColumns=args.strict_columns,
+      runParallel=args.parallel,
+      dataLoader=dataLoader if args.parallel == True else None,
+      writePrescoringScoringOutputCallback=writePrescoringScoringOutputCallback,
+      cutoffTimestampMillis=args.cutoffTimestampMillis,
+      excludeRatingsAfterANoteGotFirstStatusPlusNHours=args.excludeRatingsAfterANoteGotFirstStatusPlusNHours,
+      daysInPastToApplyPostFirstStatusFiltering=args.daysInPastToApplyPostFirstStatusFiltering,
+      filterPrescoringInputToSimulateDelayInHours=args.prescoring_delay_hours,
+      checkFlips=args.check_flips,
+      previousScoredNotes=previousScoredNotes,
+      previousAuxiliaryNoteInfo=previousAuxiliaryNoteInfo,
+      previousRatingCutoffTimestampMillis=args.previous_rating_cutoff_millis,
+      **extraScoringArgs,
+    )
 
   # Write outputs to local disk.
   write_tsv_local(scoredNotes, os.path.join(args.outdir, "scored_notes.tsv"))
