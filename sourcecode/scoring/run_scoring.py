@@ -1200,6 +1200,9 @@ def run_prescoring(
     pseudoraters=False,
     useStableInitialization=useStableInitialization,
   )
+  if enabledScorers is not None:
+    scorers = {k: v for k, v in scorers.items() if k in enabledScorers}
+    logger.info(f"Prescoring: filtered scorers to {sorted(s.name for s in scorers)}")
 
   # Attempt to convert IDs to Int64 before prescoring.  We expect this to succeed in production,
   # fail when running on public data and fail in some unit tests.
@@ -1747,6 +1750,9 @@ def run_final_note_scoring(
     logger.info(f"Post Selection Similarity Final Scoring: {len(ratings)} ratings remaining.")
 
   scorers = _get_scorers(seed, pseudoraters, useStableInitialization=useStableInitialization)
+  if enabledScorers is not None:
+    scorers = {k: v for k, v in scorers.items() if k in enabledScorers}
+    logger.info(f"Final scoring: filtered scorers to {sorted(s.name for s in scorers)}")
 
   modelResults = _run_scorers(
     args,

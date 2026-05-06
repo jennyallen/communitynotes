@@ -107,7 +107,9 @@ def parse_args():
     "--scorers",
     default=None,
     type=scorers_from_csv,
-    help="CSV list of scorers to enable.",
+    help="CSV list of scorers to enable. Restricts both prescoring and final scoring "
+    "to fit only these scorers. Note: prescoring artifacts saved with a restricted "
+    "scorer set are only reusable (via --prescoring-indir) with the same scorer set.",
   )
   parser.add_argument(
     "--seed", default=None, type=int, help="set to an int to seed matrix factorization"
