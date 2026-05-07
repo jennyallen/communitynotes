@@ -112,6 +112,16 @@ def parse_args():
     "scorer set are only reusable (via --prescoring-indir) with the same scorer set.",
   )
   parser.add_argument(
+    "--keep-participant-ids",
+    default=None,
+    dest="keep_participant_ids",
+    help="Path to a file with one participant ID per line. If set, ratings are filtered "
+    "to those whose raterParticipantId is in the set, and notes are filtered to those "
+    "whose noteAuthorParticipantId is in the set. Intended for ablations that reuse "
+    "shared prescoring artifacts (via --prescoring-indir) across many filtered final-"
+    "scoring runs.",
+  )
+  parser.add_argument(
     "--seed", default=None, type=int, help="set to an int to seed matrix factorization"
   )
   parser.add_argument(
@@ -223,6 +233,16 @@ def _run_scorer(
       args.headers,
     )
   notes, ratings, statusHistory, userEnrollment = dataLoader.get_data()
+  if args.keep_participant_ids is not None:
+    with open(args.keep_participant_ids) as f:
+      keepIds = {line.strip() for line in f if line.strip()}
+    origNotes, origRatings = len(notes), len(ratings)
+    notes = notes[notes[c.noteAuthorParticipantIdKey].astype(str).isin(keepIds)]
+    ratings = ratings[ratings[c.raterParticipantIdKey].astype(str).isin(keepIds)]
+    logger.info(
+      f"keep-participant-ids ({len(keepIds)} ids): "
+      f"notes {origNotes}->{len(notes)}, ratings {origRatings}->{len(ratings)}"
+    )
   if args.previous_scored_notes is not None:
     previousScoredNotes = tsv_reader(
       args.previous_scored_notes,
