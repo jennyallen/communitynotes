@@ -44,13 +44,13 @@ def rank_raters(prescoring_path, scorer_name):
 
 
 def build_grid(strategies, percents, reps, base_seed):
+  # All strategies get `reps` replicates, each with a distinct seed. For extreme/central the
+  # rater *set* is identical across reps (rank is deterministic), but the seed is passed to
+  # the matrix-factorization scorer via --seed, so the scoring outputs still vary by rep.
   for strategy in strategies:
     for pct in percents:
-      if strategy == "random":
-        for rep in range(reps):
-          yield strategy, pct, rep, base_seed + rep
-      else:
-        yield strategy, pct, 0, -1
+      for rep in range(reps):
+        yield strategy, pct, rep, base_seed + rep
 
 
 def select_ids(strategy, pct, seed, ranked_ids):
