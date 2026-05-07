@@ -1406,6 +1406,12 @@ def run_contributor_scoring(
       noteStatusHistory,
       userEnrollment,
     )
+    # When --scorers restricted the run, disabled scorers' rater-output columns are absent.
+    # Fill them with NaN so strict-columns validation passes.
+    if enabledScorers is not None:
+      helpfulnessScores = _fill_missing_columns(
+        helpfulnessScores, c.raterModelOutputTSVColumnsAndTypes
+      )
     if strictColumns:
       helpfulnessScores = _validate_contributor_scoring_output(helpfulnessScores)
   return helpfulnessScores
