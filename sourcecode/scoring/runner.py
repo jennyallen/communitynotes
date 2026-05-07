@@ -330,6 +330,7 @@ def _run_scorer(
       noteStatusHistory=newStatus,
       userEnrollment=userEnrollment,
       strictColumns=args.strict_columns,
+      enabledScorers=args.scorers,
     )
   else:
     # Combined path: prescoring + final scoring + contributor scoring.

@@ -108,14 +108,18 @@ def _update_single_note_status_history(mergedNote, currentTimeMillis, newScoredN
   # Update the current status in accordance with this scoring run.
   assert not pd.isna(mergedNote[c.finalRatingStatusKey])
   mergedNote[c.currentLabelKey] = mergedNote[c.finalRatingStatusKey]
-  mergedNote[c.currentCoreStatusKey] = mergedNote[c.coreRatingStatusKey]
-  mergedNote[c.currentExpansionStatusKey] = mergedNote[c.expansionRatingStatusKey]
-  mergedNote[c.currentGroupStatusKey] = mergedNote[c.groupRatingStatusKey]
+  # Source columns may be absent when their scorer is disabled via --scorers; fall back to NaN.
+  for currentKey, sourceKey in [
+    (c.currentCoreStatusKey, c.coreRatingStatusKey),
+    (c.currentExpansionStatusKey, c.expansionRatingStatusKey),
+    (c.currentGroupStatusKey, c.groupRatingStatusKey),
+    (c.currentMultiGroupStatusKey, c.multiGroupRatingStatusKey),
+    (c.currentModelingGroupKey, c.modelingGroupKey),
+    (c.currentModelingMultiGroupKey, c.modelingMultiGroupKey),
+  ]:
+    mergedNote[currentKey] = mergedNote[sourceKey] if sourceKey in mergedNote.index else np.nan
   mergedNote[c.currentDecidedByKey] = mergedNote[c.decidedByKey]
-  mergedNote[c.currentModelingGroupKey] = mergedNote[c.modelingGroupKey]
   mergedNote[c.timestampMillisOfNoteCurrentLabelKey] = currentTimeMillis
-  mergedNote[c.currentMultiGroupStatusKey] = mergedNote[c.multiGroupRatingStatusKey]
-  mergedNote[c.currentModelingMultiGroupKey] = mergedNote[c.modelingMultiGroupKey]
 
   # Lock notes which are (1) not already locked, (2) old enough to lock and (3)
   # were decided by logic which has global display impact.  Criteria (3) guarantees

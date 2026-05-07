@@ -64,92 +64,106 @@ def _get_scorers(
   seed: Optional[int],
   pseudoraters: Optional[bool],
   useStableInitialization: bool = True,
+  enabledScorers: Optional[Set[Scorers]] = None,
 ) -> Dict[Scorers, List[Scorer]]:
-  """Instantiate all Scorer objects which should be used for note ranking.
+  """Instantiate Scorer objects which should be used for note ranking.
 
   Args:
     seed (int, optional): if not None, base distinct seeds for the first and second MF rounds on this value
     pseudoraters (bool, optional): if True, compute optional pseudorater confidence intervals
+    enabledScorers: if not None, only instantiate scorers in this set. Other scorers are skipped
+      entirely so their (expensive) constructors don't run.
 
   Returns:
     Dict[Scorers, List[Scorer]] containing instantiated Scorer objects for note ranking.
   """
+  def enabled(s: Scorers) -> bool:
+    return enabledScorers is None or s in enabledScorers
+
   scorers: Dict[Scorers, List[Scorer]] = dict()
-  scorers[Scorers.MFCoreWithTopicsScorer] = [
-    MFCoreWithTopicsScorer(
-      seed, pseudoraters, useStableInitialization=useStableInitialization, threads=12
+  if enabled(Scorers.MFCoreWithTopicsScorer):
+    scorers[Scorers.MFCoreWithTopicsScorer] = [
+      MFCoreWithTopicsScorer(
+        seed, pseudoraters, useStableInitialization=useStableInitialization, threads=12
+      )
+    ]
+  if enabled(Scorers.MFCoreScorer):
+    scorers[Scorers.MFCoreScorer] = [
+      MFCoreScorer(seed, pseudoraters, useStableInitialization=useStableInitialization, threads=12)
+    ]
+  if enabled(Scorers.MFExpansionScorer):
+    scorers[Scorers.MFExpansionScorer] = [
+      MFExpansionScorer(seed, useStableInitialization=useStableInitialization, threads=12)
+    ]
+  if enabled(Scorers.MFExpansionPlusScorer):
+    scorers[Scorers.MFExpansionPlusScorer] = [
+      MFExpansionPlusScorer(seed, useStableInitialization=useStableInitialization, threads=12)
+    ]
+  if enabled(Scorers.ReputationScorer):
+    scorers[Scorers.ReputationScorer] = [
+      ReputationScorer(seed, useStableInitialization=useStableInitialization, threads=12)
+    ]
+  if enabled(Scorers.MFGroupScorer):
+    # Note that index 0 is reserved, corresponding to no group assigned, so scoring group
+    # numbers begin with index 1.
+    scorers[Scorers.MFGroupScorer] = [
+      # Scoring Group 13 is currently the largest by far, so total runtime benefits from
+      # adding the group scorers in descending order so we start work on Group 13 first.
+      MFGroupScorer(includedGroups={i}, groupId=i, threads=groupScorerParalleism.get(i, 4), seed=seed)
+      for i in range(groupScorerCount, 0, -1)
+      if i != trialScoringGroup
+    ]
+    scorers[Scorers.MFGroupScorer].append(
+      MFGroupScorer(
+        includedGroups={trialScoringGroup},
+        groupId=trialScoringGroup,
+        threads=groupScorerParalleism.get(trialScoringGroup, 4),
+        seed=seed,
+        noteInterceptLambda=0.03 * 30,
+        userInterceptLambda=0.03 * 5,
+        globalInterceptLambda=0.03 * 5,
+        noteFactorLambda=0.03 / 3,
+        userFactorLambda=0.03 / 4,
+        diamondLambda=0.03 * 25,
+        normalizedLossHyperparameters=NormalizedLossHyperparameters(
+          globalSignNorm=True, noteSignAlpha=None, noteNormExp=0, raterNormExp=-0.25
+       ),
+        maxFinalMFTrainError=0.16,
+        groupThreshold=0.4,
+        minMeanNoteScore=-0.01,
+        crhThreshold=0.15,
+        crhSuperThreshold=None,
+        crnhThresholdIntercept=-0.01,
+        crnhThresholdNoteFactorMultiplier=0,
+        crnhThresholdNMIntercept=-0.02,
+        crhThresholdNoHighVol=0.12,
+        lowDiligenceThreshold=1000,
+        factorThreshold=0.4,
+        multiplyPenaltyByHarassmentScore=False,
+        minimumHarassmentScoreToPenalize=2.5,
+        tagConsensusHarassmentHelpfulRatingPenalty=10,
+        tagFilterPercentile=90,
+        incorrectFilterThreshold=1.5,
+      )
     )
-  ]
-  scorers[Scorers.MFCoreScorer] = [
-    MFCoreScorer(seed, pseudoraters, useStableInitialization=useStableInitialization, threads=12)
-  ]
-  scorers[Scorers.MFExpansionScorer] = [
-    MFExpansionScorer(seed, useStableInitialization=useStableInitialization, threads=12)
-  ]
-  scorers[Scorers.MFExpansionPlusScorer] = [
-    MFExpansionPlusScorer(seed, useStableInitialization=useStableInitialization, threads=12)
-  ]
-  scorers[Scorers.ReputationScorer] = [
-    ReputationScorer(seed, useStableInitialization=useStableInitialization, threads=12)
-  ]
-#  # Note that index 0 is reserved, corresponding to no group assigned, so scoring group
-#  # numbers begin with index 1.
-  scorers[Scorers.MFGroupScorer] = [
-    # Scoring Group 13 is currently the largest by far, so total runtime benefits from
-    # adding the group scorers in descending order so we start work on Group 13 first.
-    MFGroupScorer(includedGroups={i}, groupId=i, threads=groupScorerParalleism.get(i, 4), seed=seed)
-    for i in range(groupScorerCount, 0, -1)
-    if i != trialScoringGroup
-  ]
-  scorers[Scorers.MFGroupScorer].append(
-    MFGroupScorer(
-      includedGroups={trialScoringGroup},
-      groupId=trialScoringGroup,
-      threads=groupScorerParalleism.get(trialScoringGroup, 4),
-      seed=seed,
-      noteInterceptLambda=0.03 * 30,
-      userInterceptLambda=0.03 * 5,
-      globalInterceptLambda=0.03 * 5,
-      noteFactorLambda=0.03 / 3,
-      userFactorLambda=0.03 / 4,
-      diamondLambda=0.03 * 25,
-      normalizedLossHyperparameters=NormalizedLossHyperparameters(
-        globalSignNorm=True, noteSignAlpha=None, noteNormExp=0, raterNormExp=-0.25
-     ),
-      maxFinalMFTrainError=0.16,
-      groupThreshold=0.4,
-      minMeanNoteScore=-0.01,
-      crhThreshold=0.15,
-      crhSuperThreshold=None,
-      crnhThresholdIntercept=-0.01,
-      crnhThresholdNoteFactorMultiplier=0,
-      crnhThresholdNMIntercept=-0.02,
-      crhThresholdNoHighVol=0.12,
-      lowDiligenceThreshold=1000,
-      factorThreshold=0.4,
-      multiplyPenaltyByHarassmentScore=False,
-      minimumHarassmentScoreToPenalize=2.5,
-      tagConsensusHarassmentHelpfulRatingPenalty=10,
-      tagFilterPercentile=90,
-      incorrectFilterThreshold=1.5,
+    scorers[Scorers.MFGroupScorer].append(
+      MFGroupScorer(
+        includedGroups={nmrScoringGroup},
+        strictInclusion=True,
+        groupThreshold=0.8,
+        groupId=nmrScoringGroup,
+        threads=groupScorerParalleism.get(nmrScoringGroup, 4),
+        seed=seed,
+      )
     )
-  )
-  scorers[Scorers.MFGroupScorer].append(
-    MFGroupScorer(
-      includedGroups={nmrScoringGroup},
-      strictInclusion=True,
-      groupThreshold=0.8,
-      groupId=nmrScoringGroup,
-      threads=groupScorerParalleism.get(nmrScoringGroup, 4),
-      seed=seed,
-    )
-  )
-  scorers[Scorers.MFTopicScorer] = [
-    MFTopicScorer(topicName=topic.name, seed=seed) for topic in Topics
-  ]
-  scorers[Scorers.MFMultiGroupScorer] = [
-    MFMultiGroupScorer(includedGroups={4, 5, 7, 12, 26}, groupId=1, threads=4, seed=seed),
-  ]
+  if enabled(Scorers.MFTopicScorer):
+    scorers[Scorers.MFTopicScorer] = [
+      MFTopicScorer(topicName=topic.name, seed=seed) for topic in Topics
+    ]
+  if enabled(Scorers.MFMultiGroupScorer):
+    scorers[Scorers.MFMultiGroupScorer] = [
+      MFMultiGroupScorer(includedGroups={4, 5, 7, 12, 26}, groupId=1, threads=4, seed=seed),
+    ]
 
   return scorers
 
@@ -609,6 +623,7 @@ def combine_final_scorer_results(
 def convert_prescoring_rater_model_output_to_coalesced_helpfulness_scores(
   prescoringRaterModelOutput: pd.DataFrame,
   userEnrollment: pd.DataFrame,
+  enabledScorers: Optional[Set[Scorers]] = None,
 ):
   # Join modeling groups from enrollment
   prescoringRaterModelOutput = prescoringRaterModelOutput.merge(
@@ -624,7 +639,7 @@ def convert_prescoring_rater_model_output_to_coalesced_helpfulness_scores(
     ]
   ].drop_duplicates()
 
-  scorersEnumDict = _get_scorers(seed=None, pseudoraters=None)
+  scorersEnumDict = _get_scorers(seed=None, pseudoraters=None, enabledScorers=enabledScorers)
   scorers = chain(*scorersEnumDict.values())
   uniqueScorerNames = prescoringRaterModelOutput[c.scorerNameKey].unique()
   for scorer in scorers:
@@ -692,7 +707,6 @@ def meta_score(
       auxiliaryNoteInfoCols pd.DataFrame: one row per note containing adjusted and ratio tag values
   """
   # Temporarily merge helpfulness tag aggregates into scoredNotes so we can run InsufficientExplanation
-  logger.info(f"DEBUG enabledScorers={enabledScorers}")  # <-- add this
   with c.time_block("Post-scorers: Meta Score: Setup"):
     assert len(scoredNotes) == len(auxiliaryNoteInfo)
     scoredNotes = scoredNotes.merge(
@@ -867,21 +881,26 @@ def meta_score(
     if not enableNmrDueToMinStableCrhTime:
       scoringResult[c.updatedTimestampMillisOfNmrDueToMinStableCrhTimeKey] = np.nan
       scoringResult[c.preStabilizationRatingStatusKey] = np.nan
-    # Validate that nothing that was a FIRM_REJECT or CRNH from Core or Expansion is rated CRH
-    coreRejects = scoringResult[c.coreRatingStatusKey].isin(
-      {c.firmReject, c.currentlyRatedNotHelpful}
-    )
-    expansionRejects = scoringResult[c.expansionRatingStatusKey].isin(
-      {c.firmReject, c.currentlyRatedNotHelpful}
-    )
-    blockedRows = coreRejects | (scoringResult[c.coreRatingStatusKey].isna() & expansionRejects)
-    crhRows = scoringResult[c.finalRatingStatusKey] == c.currentlyRatedHelpful
-    logger.info("Summary of blocked and CRH rows:")
-    # TODO: validate that these are all due to ScoringDriftGuard and change to an assert
-    logger.info(
-      scoringResult[blockedRows & crhRows][c.metaScorerActiveRulesKey].value_counts(dropna=False)
-    )
-    logger.info(scoringResult[blockedRows & crhRows][c.decidedByKey].value_counts(dropna=False))
+    # Validate that nothing that was a FIRM_REJECT or CRNH from Core or Expansion is rated CRH.
+    # Skip when either column is absent, which happens when those scorers were disabled.
+    if (
+      c.coreRatingStatusKey in scoringResult.columns
+      and c.expansionRatingStatusKey in scoringResult.columns
+    ):
+      coreRejects = scoringResult[c.coreRatingStatusKey].isin(
+        {c.firmReject, c.currentlyRatedNotHelpful}
+      )
+      expansionRejects = scoringResult[c.expansionRatingStatusKey].isin(
+        {c.firmReject, c.currentlyRatedNotHelpful}
+      )
+      blockedRows = coreRejects | (scoringResult[c.coreRatingStatusKey].isna() & expansionRejects)
+      crhRows = scoringResult[c.finalRatingStatusKey] == c.currentlyRatedHelpful
+      logger.info("Summary of blocked and CRH rows:")
+      # TODO: validate that these are all due to ScoringDriftGuard and change to an assert
+      logger.info(
+        scoringResult[blockedRows & crhRows][c.metaScorerActiveRulesKey].value_counts(dropna=False)
+      )
+      logger.info(scoringResult[blockedRows & crhRows][c.decidedByKey].value_counts(dropna=False))
   with c.time_block("Post-scorers: Meta Score: Preparing Return Values"):
     scoredNotesCols = scoringResult[
       [
@@ -1199,10 +1218,9 @@ def run_prescoring(
     seed=seed,
     pseudoraters=False,
     useStableInitialization=useStableInitialization,
+    enabledScorers=enabledScorers,
   )
-  if enabledScorers is not None:
-    scorers = {k: v for k, v in scorers.items() if k in enabledScorers}
-    logger.info(f"Prescoring: filtered scorers to {sorted(s.name for s in scorers)}")
+  logger.info(f"Prescoring: instantiated scorers {sorted(s.name for s in scorers)}")
 
   # Attempt to convert IDs to Int64 before prescoring.  We expect this to succeed in production,
   # fail when running on public data and fail in some unit tests.
@@ -1348,9 +1366,10 @@ def run_contributor_scoring(
   noteStatusHistory: pd.DataFrame,
   userEnrollment: pd.DataFrame,
   strictColumns: bool = True,
+  enabledScorers: Optional[Set[Scorers]] = None,
 ) -> pd.DataFrame:
   helpfulnessScores = convert_prescoring_rater_model_output_to_coalesced_helpfulness_scores(
-    prescoringRaterModelOutput, userEnrollment
+    prescoringRaterModelOutput, userEnrollment, enabledScorers=enabledScorers
   )
   helpfulnessScores = coalesce_group_model_helpfulness_scores(helpfulnessScores)
   helpfulnessScores = coalesce_multi_group_model_helpfulness_scores(helpfulnessScores)
@@ -1749,10 +1768,13 @@ def run_final_note_scoring(
     )
     logger.info(f"Post Selection Similarity Final Scoring: {len(ratings)} ratings remaining.")
 
-  scorers = _get_scorers(seed, pseudoraters, useStableInitialization=useStableInitialization)
-  if enabledScorers is not None:
-    scorers = {k: v for k, v in scorers.items() if k in enabledScorers}
-    logger.info(f"Final scoring: filtered scorers to {sorted(s.name for s in scorers)}")
+  scorers = _get_scorers(
+    seed,
+    pseudoraters,
+    useStableInitialization=useStableInitialization,
+    enabledScorers=enabledScorers,
+  )
+  logger.info(f"Final scoring: instantiated scorers {sorted(s.name for s in scorers)}")
 
   modelResults = _run_scorers(
     args,
@@ -2081,6 +2103,7 @@ def run_scoring(
     noteStatusHistory=newNoteStatusHistory,
     userEnrollment=userEnrollment,
     strictColumns=strictColumns,
+    enabledScorers=enabledScorers,
   )
 
   return scoredNotes, helpfulnessScores, newNoteStatusHistory, auxiliaryNoteInfo
