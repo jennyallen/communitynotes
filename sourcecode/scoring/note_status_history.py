@@ -293,6 +293,18 @@ def merge_old_and_new_note_statuses(
   scoredNotes: pd.DataFrame,
 ):
   newScoredNotesSuffix = "_sn"
+  # Scorer-output columns are absent when their scorer is disabled via --scorers; fill with NaN
+  # so the column selection below succeeds and downstream consumers see NaN-valued columns.
+  for col in [
+    c.coreRatingStatusKey,
+    c.expansionRatingStatusKey,
+    c.groupRatingStatusKey,
+    c.modelingGroupKey,
+    c.multiGroupRatingStatusKey,
+    c.modelingMultiGroupKey,
+  ]:
+    if col not in scoredNotes.columns:
+      scoredNotes[col] = np.nan
   mergedStatuses = oldNoteStatusHistory.merge(
     scoredNotes[
       [
