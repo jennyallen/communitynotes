@@ -841,6 +841,12 @@ def meta_score(
           )
         )
     if enableNmrDueToMinStableCrhTime:
+      # NmrDueToMinStableCrhTime references topic columns produced by MFTopicScorer.
+      # When that scorer is disabled via --scorers, materialize the columns as NaN so the
+      # rule's existing isna()-aware logic treats every note as "not in a topic model".
+      for col in [c.noteTopicKey, c.topicNoteConfidentKey]:
+        if col not in scoredNotes.columns:
+          scoredNotes[col] = np.nan
       rules.append(
         scoring_rules.NmrDueToMinStableCrhTime(
           RuleID.NMR_DUE_TO_MIN_STABLE_CRH_TIME,
