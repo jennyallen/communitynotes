@@ -1112,6 +1112,22 @@ def _add_deprecated_columns(scoredNotes: pd.DataFrame) -> pd.DataFrame:
   return scoredNotes
 
 
+def _fill_missing_columns(df: pd.DataFrame, columnsAndTypes) -> pd.DataFrame:
+  """Add NaN/empty columns for any expected schema columns missing from df.
+
+  Used so strict-columns validation can pass when scorers were disabled via --scorers
+  and their output columns therefore never got merged into df.
+  """
+  for column, columnType in columnsAndTypes:
+    if column in df.columns:
+      continue
+    if columnType == str:
+      df[column] = ""
+    else:
+      df[column] = np.nan
+  return df
+
+
 def _validate_note_scoring_output(
   scoredNotes: pd.DataFrame,
   noteStatusHistory: pd.DataFrame,
@@ -1945,6 +1961,16 @@ def post_note_scoring(
     ]
     scoredNotes = _add_deprecated_columns(scoredNotes)
     scoredNotes = scoredNotes.drop(columns=PFLIP_LABEL)
+    # When --scorers restricted the run, scorer-output columns are absent. Fill them with
+    # NaN so strict-columns validation passes and the output TSV schema is stable.
+    if enabledScorers is not None:
+      scoredNotes = _fill_missing_columns(scoredNotes, c.noteModelOutputTSVColumnsAndTypes)
+      auxiliaryNoteInfo = _fill_missing_columns(
+        auxiliaryNoteInfo, c.auxiliaryScoredNotesTSVColumnsAndTypes
+      )
+      newNoteStatusHistory = _fill_missing_columns(
+        newNoteStatusHistory, c.noteStatusHistoryTSVColumnsAndTypes
+      )
     if strictColumns:
       (
         scoredNotes,
