@@ -19,6 +19,7 @@ python ablation/generate_samples.py \
   --out-dir "$OUT" \
   --output-root "$OUT/runs"
 
+mkdir -p sourcecode/logs
 N=$(ls "$IDS_DIR"/*.txt | wc -l)
 echo "Submitting $N tasks..."
 sbatch --array=0-$((N-1)) \
