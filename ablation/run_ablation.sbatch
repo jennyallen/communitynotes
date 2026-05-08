@@ -38,4 +38,5 @@ python main.py \
     --keep-participant-ids "$IDS_FILE" \
     --seed "$SEED" \
     --nocheck-flips \
-    --nostrict-columns
+    --nostrict-columns \
+    --parallel
