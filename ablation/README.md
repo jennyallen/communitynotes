@@ -25,46 +25,17 @@ For all strategies, `--seed` is passed to MF, so even deterministic-rater-set st
    git push origin jennyedit
    ```
 
-2. **On the cluster, pull:**
+2. **On the cluster, pull and run the wrapper:**
    ```bash
    cd /orcd/home/002/jnallen/communitynotes
    git pull
+   bash ablation/run_test.sh
    ```
+   The wrapper activates the venv, runs `generate_samples.py` to write 3 ID files into
+   `sourcecode/ablation_runs_small/ids/`, then submits the sbatch with `--array=0-2`
+   and the right `IDS_DIR`/`OUTPUT_ROOT` exported.
 
-3. **Generate the 3 ID files:**
-   ```bash
-   python ablation/generate_samples.py \
-     --prescoring-rater-output sourcecode/data_small/prescoring/prescoring_rater_model_output.tsv \
-     --strategies extreme,central,random \
-     --percents 10 \
-     --reps 1 \
-     --out-dir sourcecode/ablation_runs_small \
-     --output-root sourcecode/ablation_runs_small/runs
-   ```
-   Produces:
-   ```
-   sourcecode/ablation_runs_small/
-   ├── ids/
-   │   ├── extreme_10pct_seed0.txt
-   │   ├── central_10pct_seed0.txt
-   │   └── random_10pct_seed0.txt
-   └── manifest.tsv
-   ```
-
-4. **Edit `ablation/run_ablation.sbatch`** — three lines near the top:
-   ```bash
-   #SBATCH --array=0-2
-   ...
-   IDS_DIR=/orcd/home/002/jnallen/communitynotes/sourcecode/ablation_runs_small/ids
-   OUTPUT_ROOT=/orcd/home/002/jnallen/communitynotes/sourcecode/ablation_runs_small/runs
-   ```
-
-5. **Submit:**
-   ```bash
-   sbatch /orcd/home/002/jnallen/communitynotes/ablation/run_ablation.sbatch
-   ```
-
-6. **Watch progress:**
+3. **Watch progress:**
    ```bash
    squeue -u $USER
    tail -f log_ablation_<jobid>_0.out       # alphabetically first task = central_10pct
