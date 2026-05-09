@@ -4,8 +4,8 @@
 #SBATCH --output=/orcd/home/002/jnallen/communitynotes/sourcecode/logs/log_ablation_%A_%a.out
 #SBATCH --partition=sched_mit_sloan_interactive
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=100G
-#SBATCH --time=2:00:00
+#SBATCH --mem=500G
+#SBATCH --time=1-00:00:00
 #SBATCH --array=0-0      # edit this to (count of *.txt in IDS_DIR) - 1, e.g. --array=0-44%10
 
 # Defaults below; override at submit time, e.g.
@@ -28,13 +28,13 @@ mkdir -p "$OUTPUT_DIR"
 echo "[$(date)] array=$SLURM_ARRAY_TASK_ID  ids=$IDS_FILE  seed=$SEED  out=$OUTPUT_DIR"
 
 python main.py \
-    --enrollment data_small/userEnrollment-00000.tsv \
-    --notes data_small/notes-00000.tsv \
-    --ratings data_small/ratings \
-    --status data_small/noteStatusHistory-00000.tsv \
+    --enrollment data_pre_june30/userEnrollment-00000.tsv \
+    --notes data_pre_june30/notes-00000.tsv \
+    --ratings data_pre_june30/ratings \
+    --status data_pre_june30/noteStatusHistory-00000.tsv \
     --outdir "$OUTPUT_DIR" \
     --scorers MFCoreScorer \
-    --prescoring-indir data_small/prescoring \
+    --prescoring-indir data_pre_june30/prescoring \
     --keep-participant-ids "$IDS_FILE" \
     --seed "$SEED" \
     --nocheck-flips \
