@@ -12,7 +12,7 @@ IDS_DIR="$(pwd)/$OUT/ids"
 OUTPUT_ROOT="$(pwd)/$OUT/runs"
 
 python ablation/generate_samples.py \
-  --prescoring-rater-output sourcecode/data_small/prescoring/prescoring_rater_model_output.tsv \
+  --prescoring-rater-output sourcecode/data_pre_june30/prescoring/prescoring_rater_model_output.tsv \
   --strategies extreme,central,random \
   --percents 10 \
   --reps 1 \
