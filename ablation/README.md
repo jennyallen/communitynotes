@@ -1,16 +1,18 @@
 # Rater/Writer Ablation
 
-Run final-scoring many times against a single shared prescoring run, each time keeping a different subset of raters/writers, to measure how the kept set affects which notes get surfaced.
+Run final-scoring many times against a single shared prescoring run, each time *dropping* a different subset of raters/writers, to measure how removing that slice changes which notes get surfaced.
 
 ## Pieces
 
-- `generate_samples.py` — ranks raters by `|internalRaterFactor1|` from `prescoring_rater_model_output.tsv` and writes one ID file per `(strategy, pct, rep)` plus a manifest TSV.
-- `run_ablation.sbatch` — SLURM array. Each task picks one ID file (sorted alphabetically, indexed by `$SLURM_ARRAY_TASK_ID`), parses the seed out of the filename, and runs `python main.py` with `--keep-participant-ids` and `--seed`.
-- The runner-side filter (`--keep-participant-ids`) lives in [sourcecode/scoring/runner.py](../sourcecode/scoring/runner.py) and applies to both `notes` (by `noteAuthorParticipantId`) and `ratings` (by `raterParticipantId`).
+- `generate_samples.py` — ranks raters by `|internalRaterFactor1|` from `prescoring_rater_model_output.tsv` and writes one ID file per `(strategy, pct, rep)` plus a manifest TSV. Each ID file is the slice to *drop*.
+- `run_ablation.sbatch` — SLURM array. Each task picks one ID file (sorted alphabetically, indexed by `$SLURM_ARRAY_TASK_ID`), parses the seed out of the filename, and runs `python main.py` with `--drop-participant-ids` and `--seed`.
+- The runner-side filter (`--drop-participant-ids`) lives in [sourcecode/scoring/runner.py](../sourcecode/scoring/runner.py) and drops rows from both `notes` (by `noteAuthorParticipantId`) and `ratings` (by `raterParticipantId`).
 
 ## Strategies
 
-| Strategy | Definition |
+The X% in each filename is the slice to *drop*; the run keeps the other (100−X)%.
+
+| Strategy | Definition (slice dropped) |
 |---|---|
 | `extreme` | top X% by `|internalRaterFactor1|` (deterministic; identical IDs across reps) |
 | `central` | bottom X% (closest to factor 0; deterministic) |

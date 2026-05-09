@@ -35,7 +35,7 @@ python main.py \
     --outdir "$OUTPUT_DIR" \
     --scorers MFCoreScorer \
     --prescoring-indir data_pre_june30/prescoring \
-    --keep-participant-ids "$IDS_FILE" \
+    --drop-participant-ids "$IDS_FILE" \
     --seed "$SEED" \
     --nocheck-flips \
     --nostrict-columns \
