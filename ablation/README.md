@@ -32,7 +32,7 @@ For all strategies, `--seed` is passed to MF, so even deterministic-rater-set st
    bash ablation/run_test.sh
    ```
    The wrapper activates the venv, runs `generate_samples.py` to write 3 ID files into
-   `sourcecode/ablation_runs_small/ids/`, then submits the sbatch with `--array=0-2`
+   `sourcecode/ablation_runs/ids/`, then submits the sbatch with `--array=0-2`
    and the right `IDS_DIR`/`OUTPUT_ROOT` exported.
 
 3. **Watch progress:**
@@ -42,7 +42,7 @@ For all strategies, `--seed` is passed to MF, so even deterministic-rater-set st
    ```
 
    Each run writes its outputs (`scored_notes.tsv`, `helpfulness_scores.tsv`, etc.) under
-   `sourcecode/ablation_runs_small/runs/<strategy>_10pct_seed0/`.
+   `sourcecode/ablation_runs/runs/<strategy>_10pct_seed0/`.
 
 ## Full grid
 

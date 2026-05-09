@@ -7,7 +7,7 @@ set -euo pipefail
 cd /orcd/home/002/jnallen/communitynotes
 source scoring/communitynotes_env/bin/activate
 
-OUT=sourcecode/ablation_runs_small
+OUT=sourcecode/ablation_runs
 IDS_DIR="$(pwd)/$OUT/ids"
 OUTPUT_ROOT="$(pwd)/$OUT/runs"
 
