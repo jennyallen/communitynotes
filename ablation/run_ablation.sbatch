@@ -9,9 +9,10 @@
 #SBATCH --array=0-0      # edit this to (count of *.txt in IDS_DIR) - 1, e.g. --array=0-44%10
 
 # Defaults below; override at submit time, e.g.
-#   sbatch --array=0-2 --export=ALL,IDS_DIR=/path/ids,OUTPUT_ROOT=/path/runs ablation/run_ablation.sbatch
+#   sbatch --array=0-2 --export=ALL,IDS_DIR=/path/ids,OUTPUT_ROOT=/path/runs,DATA_DIR=data_small ablation/run_ablation.sbatch
 IDS_DIR="${IDS_DIR:-/orcd/home/002/jnallen/communitynotes/sourcecode/ablation_runs/ids}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-/orcd/home/002/jnallen/communitynotes/sourcecode/ablation_runs/runs}"
+DATA_DIR="${DATA_DIR:-data_pre_june30}"
 
 source /orcd/home/002/jnallen/communitynotes/scoring/communitynotes_env/bin/activate
 cd /orcd/home/002/jnallen/communitynotes/sourcecode
@@ -25,16 +26,16 @@ SEED="${NAME##*seed}"                      # tail after "seed", e.g. 3
 OUTPUT_DIR="$OUTPUT_ROOT/$NAME"
 mkdir -p "$OUTPUT_DIR"
 
-echo "[$(date)] array=$SLURM_ARRAY_TASK_ID  ids=$IDS_FILE  seed=$SEED  out=$OUTPUT_DIR"
+echo "[$(date)] array=$SLURM_ARRAY_TASK_ID  ids=$IDS_FILE  seed=$SEED  out=$OUTPUT_DIR  data=$DATA_DIR"
 
 python main.py \
-    --enrollment data_pre_june30/userEnrollment-00000.tsv \
-    --notes data_pre_june30/notes-00000.tsv \
-    --ratings data_pre_june30/ratings \
-    --status data_pre_june30/noteStatusHistory-00000.tsv \
+    --enrollment "$DATA_DIR/userEnrollment-00000.tsv" \
+    --notes "$DATA_DIR/notes-00000.tsv" \
+    --ratings "$DATA_DIR/ratings" \
+    --status "$DATA_DIR/noteStatusHistory-00000.tsv" \
     --outdir "$OUTPUT_DIR" \
     --scorers MFCoreScorer \
-    --prescoring-indir data_pre_june30/prescoring \
+    --prescoring-indir "$DATA_DIR/prescoring" \
     --drop-participant-ids "$IDS_FILE" \
     --seed "$SEED" \
     --nocheck-flips \

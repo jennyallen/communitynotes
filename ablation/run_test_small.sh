@@ -1,14 +1,14 @@
 #!/bin/bash
-# Full-data ablation test: 10% × 1 rep × 3 strategies = 3 SLURM array tasks
-# against data_pre_june30/. Activates the venv, generates IDs, submits the sbatch.
-# Run from the cluster: bash ablation/run_test.sh
+# Small-data ablation test: 10% × 1 rep × 3 strategies = 3 SLURM array tasks
+# against data_small/. Output goes to sourcecode/ablation_runs_small/.
+# Run from the cluster: bash ablation/run_test_small.sh
 set -euo pipefail
 
 cd /orcd/home/002/jnallen/communitynotes
 source scoring/communitynotes_env/bin/activate
 
-DATA_DIR=data_pre_june30
-OUT=sourcecode/ablation_runs
+DATA_DIR=data_small
+OUT=sourcecode/ablation_runs_small
 IDS_DIR="$(pwd)/$OUT/ids"
 OUTPUT_ROOT="$(pwd)/$OUT/runs"
 
