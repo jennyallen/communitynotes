@@ -4,7 +4,7 @@
 #SBATCH --output=/orcd/home/002/jnallen/communitynotes/sourcecode/logs/log_ablation_%A_%a.out
 #SBATCH --partition=sched_mit_sloan_interactive
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=200G
+#SBATCH --mem=145G
 #SBATCH --time=1-00:00:00
 #SBATCH --array=0-0      # edit this to (count of *.txt in IDS_DIR) - 1, e.g. --array=0-44%10
 
