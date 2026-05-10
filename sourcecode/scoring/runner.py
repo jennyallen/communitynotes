@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 from functools import partial
+from typing import Optional, Set
 
 from . import constants as c
 from .enums import scorers_from_csv
@@ -233,15 +234,67 @@ def _run_scorer(
       args.headers,
     )
   notes, ratings, statusHistory, userEnrollment = dataLoader.get_data()
+  dropIds: Optional[Set[str]] = None
+  droppedNoteIds: Optional[Set[int]] = None
   if args.drop_participant_ids is not None:
     with open(args.drop_participant_ids) as f:
       dropIds = {line.strip() for line in f if line.strip()}
-    origNotes, origRatings = len(notes), len(ratings)
+    origNotes, origRatings, origStatus, origEnroll = (
+      len(notes),
+      len(ratings),
+      len(statusHistory),
+      len(userEnrollment),
+    )
+    origAuthors = notes[c.noteAuthorParticipantIdKey].astype(str).nunique()
+    origRaters = ratings[c.raterParticipantIdKey].astype(str).nunique()
+    droppedNoteIds = set(
+      notes.loc[notes[c.noteAuthorParticipantIdKey].astype(str).isin(dropIds), c.noteIdKey]
+    )
     notes = notes[~notes[c.noteAuthorParticipantIdKey].astype(str).isin(dropIds)]
-    ratings = ratings[~ratings[c.raterParticipantIdKey].astype(str).isin(dropIds)]
+    ratings = ratings[
+      ~ratings[c.raterParticipantIdKey].astype(str).isin(dropIds)
+      & ~ratings[c.noteIdKey].isin(droppedNoteIds)
+    ]
+    statusHistory = statusHistory[~statusHistory[c.noteIdKey].isin(droppedNoteIds)]
+    userEnrollment = userEnrollment[
+      ~userEnrollment[c.participantIdKey].astype(str).isin(dropIds)
+    ]
+    postAuthors = notes[c.noteAuthorParticipantIdKey].astype(str).nunique()
+    postRaters = ratings[c.raterParticipantIdKey].astype(str).nunique()
     logger.info(
-      f"drop-participant-ids ({len(dropIds)} ids): "
-      f"notes {origNotes}->{len(notes)}, ratings {origRatings}->{len(ratings)}"
+      f"drop-participant-ids ({len(dropIds)} ids, {len(droppedNoteIds)} authored notes): "
+      f"notes {origNotes}->{len(notes)}, "
+      f"ratings {origRatings}->{len(ratings)}, "
+      f"statusHistory {origStatus}->{len(statusHistory)}, "
+      f"userEnrollment {origEnroll}->{len(userEnrollment)}, "
+      f"unique authors {origAuthors}->{postAuthors}, "
+      f"unique raters {origRaters}->{postRaters}"
+    )
+    leakedAuthors = set(notes[c.noteAuthorParticipantIdKey].astype(str)) & dropIds
+    leakedRaters = set(ratings[c.raterParticipantIdKey].astype(str)) & dropIds
+    leakedNotes = set(notes[c.noteIdKey]) & droppedNoteIds
+    leakedStatusNotes = set(statusHistory[c.noteIdKey]) & droppedNoteIds
+    leakedRatingNotes = set(ratings[c.noteIdKey]) & droppedNoteIds
+    leakedEnroll = set(userEnrollment[c.participantIdKey].astype(str)) & dropIds
+    assert not leakedAuthors, (
+      f"drop-participant-ids leak: {len(leakedAuthors)} dropped authors still in notes "
+      f"(e.g. {list(leakedAuthors)[:3]})"
+    )
+    assert not leakedRaters, (
+      f"drop-participant-ids leak: {len(leakedRaters)} dropped raters still in ratings "
+      f"(e.g. {list(leakedRaters)[:3]})"
+    )
+    assert not leakedNotes, (
+      f"drop-participant-ids leak: {len(leakedNotes)} dropped-author notes still in notes df"
+    )
+    assert not leakedStatusNotes, (
+      f"drop-participant-ids leak: {len(leakedStatusNotes)} dropped-author notes still in noteStatusHistory"
+    )
+    assert not leakedRatingNotes, (
+      f"drop-participant-ids leak: {len(leakedRatingNotes)} ratings on dropped-author notes still present"
+    )
+    assert not leakedEnroll, (
+      f"drop-participant-ids leak: {len(leakedEnroll)} dropped participants still in userEnrollment"
     )
   if args.previous_scored_notes is not None:
     previousScoredNotes = tsv_reader(
@@ -310,6 +363,25 @@ def _run_scorer(
       preMetaOutput,
     ) = presLoader.get_prescoring_model_output()
 
+    if dropIds is not None:
+      origPreRater, origPreNote = len(preRaterOutput), len(preNoteOutput)
+      preRaterOutput = preRaterOutput[
+        ~preRaterOutput[c.raterParticipantIdKey].astype(str).isin(dropIds)
+      ]
+      preNoteOutput = preNoteOutput[~preNoteOutput[c.noteIdKey].isin(droppedNoteIds)]
+      logger.info(
+        f"drop-participant-ids: prescoringRaterModelOutput {origPreRater}->{len(preRaterOutput)}, "
+        f"prescoringNoteModelOutput {origPreNote}->{len(preNoteOutput)}"
+      )
+      leakedPreRater = set(preRaterOutput[c.raterParticipantIdKey].astype(str)) & dropIds
+      leakedPreNote = set(preNoteOutput[c.noteIdKey]) & droppedNoteIds
+      assert not leakedPreRater, (
+        f"drop-participant-ids leak: {len(leakedPreRater)} dropped raters still in prescoringRaterModelOutput"
+      )
+      assert not leakedPreNote, (
+        f"drop-participant-ids leak: {len(leakedPreNote)} dropped-author notes still in prescoringNoteModelOutput"
+      )
+
     notes, ratings, _, _ = filter_input_data_for_testing(
       notes,
       ratings,
@@ -341,6 +413,8 @@ def _run_scorer(
       previousScoredNotes=previousScoredNotes,
       previousAuxiliaryNoteInfo=previousAuxiliaryNoteInfo,
       previousRatingCutoffTimestampMillis=args.previous_rating_cutoff_millis,
+      dropParticipantIds=dropIds,
+      droppedNoteIds=droppedNoteIds,
     )
     helpfulnessScores = run_contributor_scoring(
       ratings=ratings,
@@ -351,6 +425,8 @@ def _run_scorer(
       userEnrollment=userEnrollment,
       strictColumns=args.strict_columns,
       enabledScorers=args.scorers,
+      dropParticipantIds=dropIds,
+      droppedNoteIds=droppedNoteIds,
     )
   else:
     # Combined path: prescoring + final scoring + contributor scoring.
@@ -376,6 +452,27 @@ def _run_scorer(
       previousAuxiliaryNoteInfo=previousAuxiliaryNoteInfo,
       previousRatingCutoffTimestampMillis=args.previous_rating_cutoff_millis,
       **extraScoringArgs,
+    )
+
+  # Final output-side leak guard: nothing dropped should appear in any of the four
+  # outputs that are about to be written to disk.
+  if dropIds is not None:
+    leakedScoredAuthors = set(scoredNotes[c.noteIdKey]) & droppedNoteIds
+    leakedHelpRaters = set(helpfulnessScores[c.raterParticipantIdKey].astype(str)) & dropIds
+    leakedStatusOut = set(newStatus[c.noteIdKey]) & droppedNoteIds
+    leakedAuxOut = set(auxNoteInfo[c.noteIdKey]) & droppedNoteIds
+    assert not leakedScoredAuthors, (
+      f"output leak: {len(leakedScoredAuthors)} dropped-author notes in scored_notes.tsv"
+    )
+    assert not leakedHelpRaters, (
+      f"output leak: {len(leakedHelpRaters)} dropped raters in helpfulness_scores.tsv "
+      f"(e.g. {list(leakedHelpRaters)[:3]})"
+    )
+    assert not leakedStatusOut, (
+      f"output leak: {len(leakedStatusOut)} dropped-author notes in note_status_history.tsv"
+    )
+    assert not leakedAuxOut, (
+      f"output leak: {len(leakedAuxOut)} dropped-author notes in aux_note_info.tsv"
     )
 
   # Write outputs to local disk.

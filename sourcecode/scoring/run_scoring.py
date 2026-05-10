@@ -60,6 +60,26 @@ logger = logging.getLogger("birdwatch.run_scoring")
 logger.setLevel(logging.INFO)
 
 
+def _assert_no_dropped(
+  df: Optional[pd.DataFrame],
+  idCol: str,
+  dropSet: Optional[Set],
+  where: str,
+) -> None:
+  """Assert that no IDs in ``dropSet`` appear in ``df[idCol]``.
+
+  No-op when ``dropSet`` is None (non-ablation runs) or the df is empty/missing the column.
+  Used as an in-pipeline guard during ablation runs to catch any leak of ablated participant
+  or note IDs at major data-flow boundaries.
+  """
+  if dropSet is None or df is None or len(df) == 0 or idCol not in df.columns:
+    return
+  leaked = set(df[idCol].astype(str)) & set(map(str, dropSet))
+  assert not leaked, (
+    f"[{where}] ablation leak: {len(leaked)} dropped ids in {idCol} (e.g. {list(leaked)[:3]})"
+  )
+
+
 def _get_scorers(
   seed: Optional[int],
   pseudoraters: Optional[bool],
@@ -1389,7 +1409,18 @@ def run_contributor_scoring(
   userEnrollment: pd.DataFrame,
   strictColumns: bool = True,
   enabledScorers: Optional[Set[Scorers]] = None,
+  dropParticipantIds: Optional[Set[str]] = None,
+  droppedNoteIds: Optional[Set[int]] = None,
 ) -> pd.DataFrame:
+  # Entry guard.
+  _assert_no_dropped(ratings, c.raterParticipantIdKey, dropParticipantIds, "run_contributor_scoring:entry/ratings")
+  _assert_no_dropped(ratings, c.noteIdKey, droppedNoteIds, "run_contributor_scoring:entry/ratings")
+  _assert_no_dropped(scoredNotes, c.noteIdKey, droppedNoteIds, "run_contributor_scoring:entry/scoredNotes")
+  _assert_no_dropped(auxiliaryNoteInfo, c.noteIdKey, droppedNoteIds, "run_contributor_scoring:entry/auxiliaryNoteInfo")
+  _assert_no_dropped(prescoringRaterModelOutput, c.raterParticipantIdKey, dropParticipantIds, "run_contributor_scoring:entry/prescoringRater")
+  _assert_no_dropped(noteStatusHistory, c.noteIdKey, droppedNoteIds, "run_contributor_scoring:entry/noteStatusHistory")
+  _assert_no_dropped(userEnrollment, c.participantIdKey, dropParticipantIds, "run_contributor_scoring:entry/userEnrollment")
+
   helpfulnessScores = convert_prescoring_rater_model_output_to_coalesced_helpfulness_scores(
     prescoringRaterModelOutput, userEnrollment, enabledScorers=enabledScorers
   )
@@ -1414,6 +1445,9 @@ def run_contributor_scoring(
       )
     if strictColumns:
       helpfulnessScores = _validate_contributor_scoring_output(helpfulnessScores)
+
+  # Exit guard.
+  _assert_no_dropped(helpfulnessScores, c.raterParticipantIdKey, dropParticipantIds, "run_contributor_scoring:exit/helpfulnessScores")
   return helpfulnessScores
 
 
@@ -1637,6 +1671,8 @@ def run_final_note_scoring(
   previousAuxiliaryNoteInfo: Optional[pd.DataFrame] = None,
   previousRatingCutoffTimestampMillis: Optional[int] = 0,
   enableNmrDueToMinStableCrhTime: bool = True,
+  dropParticipantIds: Optional[Set[str]] = None,
+  droppedNoteIds: Optional[Set[int]] = None,
 ):
   metrics = {}
   with c.time_block("Logging Final Scoring RAM usage"):
@@ -1646,6 +1682,16 @@ def run_final_note_scoring(
     logger.info(get_df_info(userEnrollment, "userEnrollment"))
     logger.info(get_df_info(prescoringNoteModelOutput, "prescoringNoteModelOutput"))
     logger.info(get_df_info(prescoringRaterModelOutput, "prescoringRaterModelOutput"))
+
+  # Ablation entry guard: every input DataFrame must already be filtered.
+  _assert_no_dropped(notes, c.noteAuthorParticipantIdKey, dropParticipantIds, "run_final_note_scoring:entry/notes")
+  _assert_no_dropped(notes, c.noteIdKey, droppedNoteIds, "run_final_note_scoring:entry/notes")
+  _assert_no_dropped(ratings, c.raterParticipantIdKey, dropParticipantIds, "run_final_note_scoring:entry/ratings")
+  _assert_no_dropped(ratings, c.noteIdKey, droppedNoteIds, "run_final_note_scoring:entry/ratings")
+  _assert_no_dropped(noteStatusHistory, c.noteIdKey, droppedNoteIds, "run_final_note_scoring:entry/noteStatusHistory")
+  _assert_no_dropped(userEnrollment, c.participantIdKey, dropParticipantIds, "run_final_note_scoring:entry/userEnrollment")
+  _assert_no_dropped(prescoringRaterModelOutput, c.raterParticipantIdKey, dropParticipantIds, "run_final_note_scoring:entry/prescoringRater")
+  _assert_no_dropped(prescoringNoteModelOutput, c.noteIdKey, droppedNoteIds, "run_final_note_scoring:entry/prescoringNote")
 
   # Save a reference to the full set of available notes data so that we can later guarantee
   # the text from all notes are available during topic assignment.
@@ -1687,6 +1733,10 @@ def run_final_note_scoring(
       pflipNotes, pflipRatings, pflipNoteStatusHistory, prescoringRaterModelOutput
     )
     logger.info(f"pflip prediction summary:\n{pflipPredictions[PFLIP_LABEL].value_counts()}")
+    _assert_no_dropped(pflipNotes, c.noteAuthorParticipantIdKey, dropParticipantIds, "pflip/pflipNotes")
+    _assert_no_dropped(pflipNotes, c.noteIdKey, droppedNoteIds, "pflip/pflipNotes")
+    _assert_no_dropped(pflipRatings, c.raterParticipantIdKey, dropParticipantIds, "pflip/pflipRatings")
+    _assert_no_dropped(pflipRatings, c.noteIdKey, droppedNoteIds, "pflip/pflipRatings")
 
   with c.time_block("Determine which notes to score."):
     if previousScoredNotes is None:
@@ -1774,6 +1824,11 @@ def run_final_note_scoring(
 
   with c.time_block("Preprocess smaller dataset since we skipped preprocessing at read time"):
     notes, ratings, noteStatusHistory = preprocess_data(notes, ratings, noteStatusHistory)
+    _assert_no_dropped(notes, c.noteAuthorParticipantIdKey, dropParticipantIds, "post-preprocess/notes")
+    _assert_no_dropped(notes, c.noteIdKey, droppedNoteIds, "post-preprocess/notes")
+    _assert_no_dropped(ratings, c.raterParticipantIdKey, dropParticipantIds, "post-preprocess/ratings")
+    _assert_no_dropped(ratings, c.noteIdKey, droppedNoteIds, "post-preprocess/ratings")
+    _assert_no_dropped(noteStatusHistory, c.noteIdKey, droppedNoteIds, "post-preprocess/noteStatusHistory")
 
   with c.time_block("Note Topic Assignment"):
     # Prune notesFull to include all notes on any post that is having a note scored.  Recall that
@@ -1795,6 +1850,18 @@ def run_final_note_scoring(
       ],
     )
     logger.info(f"Post Selection Similarity Final Scoring: {len(ratings)} ratings remaining.")
+    _assert_no_dropped(ratings, c.raterParticipantIdKey, dropParticipantIds, "post-PSS/ratings")
+    _assert_no_dropped(ratings, c.noteIdKey, droppedNoteIds, "post-PSS/ratings")
+
+  # Pre-scoring guard: every DataFrame about to be passed into the scorers must be clean.
+  _assert_no_dropped(notes, c.noteAuthorParticipantIdKey, dropParticipantIds, "pre-scorers/notes")
+  _assert_no_dropped(notes, c.noteIdKey, droppedNoteIds, "pre-scorers/notes")
+  _assert_no_dropped(ratings, c.raterParticipantIdKey, dropParticipantIds, "pre-scorers/ratings")
+  _assert_no_dropped(ratings, c.noteIdKey, droppedNoteIds, "pre-scorers/ratings")
+  _assert_no_dropped(noteStatusHistory, c.noteIdKey, droppedNoteIds, "pre-scorers/noteStatusHistory")
+  _assert_no_dropped(userEnrollment, c.participantIdKey, dropParticipantIds, "pre-scorers/userEnrollment")
+  _assert_no_dropped(prescoringRaterModelOutput, c.raterParticipantIdKey, dropParticipantIds, "pre-scorers/prescoringRater")
+  _assert_no_dropped(prescoringNoteModelOutput, c.noteIdKey, droppedNoteIds, "pre-scorers/prescoringNote")
 
   scorers = _get_scorers(
     seed,
@@ -1825,6 +1892,8 @@ def run_final_note_scoring(
   )
 
   scoredNotes, auxiliaryNoteInfo = combine_final_scorer_results(modelResults, noteStatusHistory)
+  _assert_no_dropped(scoredNotes, c.noteIdKey, droppedNoteIds, "post-combine/scoredNotes")
+  _assert_no_dropped(auxiliaryNoteInfo, c.noteIdKey, droppedNoteIds, "post-combine/auxiliaryNoteInfo")
   scoredNotes = scoredNotes.merge(pflipPredictions, how="left")
   scoredNotes, newNoteStatusHistory, auxiliaryNoteInfo = post_note_scoring(
     scorers,
@@ -1837,6 +1906,8 @@ def run_final_note_scoring(
     strictColumns,
     checkFlips,
     enableNmrDueToMinStableCrhTime,
+    dropParticipantIds=dropParticipantIds,
+    droppedNoteIds=droppedNoteIds,
   )
 
   # Concat final scoring results for newly-scored notes with the results for old notes not scores.
@@ -1866,6 +1937,11 @@ def run_final_note_scoring(
 
     newNoteStatusHistory = pd.concat([newNoteStatusHistory, noteStatusHistoryPassthrough])
 
+  # Exit guard.
+  _assert_no_dropped(scoredNotes, c.noteIdKey, droppedNoteIds, "run_final_note_scoring:exit/scoredNotes")
+  _assert_no_dropped(newNoteStatusHistory, c.noteIdKey, droppedNoteIds, "run_final_note_scoring:exit/newNoteStatusHistory")
+  _assert_no_dropped(auxiliaryNoteInfo, c.noteIdKey, droppedNoteIds, "run_final_note_scoring:exit/auxiliaryNoteInfo")
+
   return scoredNotes, newNoteStatusHistory, auxiliaryNoteInfo, metrics
 
 
@@ -1880,6 +1956,8 @@ def post_note_scoring(
   strictColumns: bool = True,
   checkFlips: bool = True,
   enableNmrDueToMinStableCrhTime: bool = True,
+  dropParticipantIds: Optional[Set[str]] = None,
+  droppedNoteIds: Optional[Set[int]] = None,
 ):
   """
   Apply individual scoring models and obtained merged result.
@@ -1987,6 +2065,9 @@ def post_note_scoring(
   logger.info(
     f"Meta scoring elapsed time: {((time.time() - postScoringStartTime)/60.0):.2f} minutes."
   )
+  _assert_no_dropped(scoredNotes, c.noteIdKey, droppedNoteIds, "post_note_scoring:exit/scoredNotes")
+  _assert_no_dropped(newNoteStatusHistory, c.noteIdKey, droppedNoteIds, "post_note_scoring:exit/newNoteStatusHistory")
+  _assert_no_dropped(auxiliaryNoteInfo, c.noteIdKey, droppedNoteIds, "post_note_scoring:exit/auxiliaryNoteInfo")
   return scoredNotes, newNoteStatusHistory, auxiliaryNoteInfo
 
 
