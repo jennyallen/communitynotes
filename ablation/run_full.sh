@@ -9,13 +9,14 @@ cd /orcd/home/002/jnallen/communitynotes
 source scoring/communitynotes_env/bin/activate
 
 DATA_DIR=data_pre_june30
-OUT=sourcecode/ablation_runs
-IDS_DIR="$(pwd)/$OUT/ids"
-OUTPUT_ROOT="$(pwd)/$OUT/runs"
+POOL=/home/jnallen/orcd/pool/communitynotes_data
+OUT="$POOL/ablation_runs"
+IDS_DIR="$OUT/ids"
+OUTPUT_ROOT="$OUT/runs"
 
 # Clear stale IDs from previous (smaller) grids so SLURM array indexing matches
 # the new manifest.
-mkdir -p "$IDS_DIR"
+mkdir -p "$POOL/logs" "$IDS_DIR" "$OUTPUT_ROOT"
 rm -f "$IDS_DIR"/*.txt
 
 python ablation/generate_samples.py \
@@ -25,9 +26,8 @@ python ablation/generate_samples.py \
   --reps 10 \
   --base-seed 0 \
   --out-dir "$OUT" \
-  --output-root "$OUT/runs"
+  --output-root "$OUTPUT_ROOT"
 
-mkdir -p sourcecode/logs
 N=$(ls "$IDS_DIR"/*.txt | wc -l)
 echo "Submitting $N tasks against $DATA_DIR (concurrency cap 10)..."
 sbatch --array=0-$((N-1))%10 \

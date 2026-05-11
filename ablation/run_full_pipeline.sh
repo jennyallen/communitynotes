@@ -10,10 +10,11 @@ cd /orcd/home/002/jnallen/communitynotes
 source scoring/communitynotes_env/bin/activate
 
 DATA_DIR=data_pre_june30
-OUT=sourcecode/full_pipeline_runs
+POOL=/home/jnallen/orcd/pool/communitynotes_data
+OUT="$POOL/full_pipeline_runs"
 
-mkdir -p sourcecode/logs "$OUT"
+mkdir -p "$POOL/logs" "$OUT"
 echo "Submitting 10 full-pipeline tasks against $DATA_DIR..."
 sbatch \
-  --export=ALL,DATA_DIR="$DATA_DIR",OUTPUT_ROOT="$(pwd)/$OUT" \
+  --export=ALL,DATA_DIR="$DATA_DIR",OUTPUT_ROOT="$OUT" \
   ablation/run_full_pipeline.sbatch

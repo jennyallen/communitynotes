@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=notes_ablation
-#SBATCH --output=/orcd/home/002/jnallen/communitynotes/sourcecode/logs/log_ablation_%A_%a.out
+#SBATCH --output=/home/jnallen/orcd/pool/communitynotes_data/logs/log_ablation_%A_%a.out
 #SBATCH --partition=sched_mit_sloan_interactive
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=145G

@@ -8,9 +8,12 @@ cd /orcd/home/002/jnallen/communitynotes
 source scoring/communitynotes_env/bin/activate
 
 DATA_DIR=data_pre_june30
-OUT=sourcecode/ablation_runs
-IDS_DIR="$(pwd)/$OUT/ids"
-OUTPUT_ROOT="$(pwd)/$OUT/runs"
+POOL=/home/jnallen/orcd/pool/communitynotes_data
+OUT="$POOL/ablation_runs"
+IDS_DIR="$OUT/ids"
+OUTPUT_ROOT="$OUT/runs"
+
+mkdir -p "$POOL/logs" "$IDS_DIR" "$OUTPUT_ROOT"
 
 python ablation/generate_samples.py \
   --prescoring-rater-output "sourcecode/$DATA_DIR/prescoring/prescoring_rater_model_output.tsv" \
@@ -18,9 +21,8 @@ python ablation/generate_samples.py \
   --percents 10 \
   --reps 1 \
   --out-dir "$OUT" \
-  --output-root "$OUT/runs"
+  --output-root "$OUTPUT_ROOT"
 
-mkdir -p sourcecode/logs
 N=$(ls "$IDS_DIR"/*.txt | wc -l)
 echo "Submitting $N tasks against $DATA_DIR..."
 sbatch --array=0-$((N-1)) \
