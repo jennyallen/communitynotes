@@ -27,10 +27,14 @@ fi
 # Idempotent: blow away any prior (possibly partial) env with the same name.
 conda env remove -n "$ENV_NAME" -y 2>/dev/null || true
 
+# Use the libmamba solver — conda's classic solver hangs for many minutes on
+# the R-package dependency graph. libmamba ships with conda >=23.x and is the
+# default in newer versions. If it's not available on your conda, drop the flag.
+#
 # conda-forge has prebuilt R packages including the heavyweight arrow; avoid CRAN compile.
 # Pin python=3.12 — JupyterLab + Engaging OOD's proxy choked on python 3.14.
 # notebook is needed because OOD's Jupyter loads the notebook-server extension.
-conda create -n "$ENV_NAME" -c conda-forge -y \
+conda create -n "$ENV_NAME" --solver=libmamba -c conda-forge -y \
   'python=3.12' \
   r-base \
   r-irkernel \
